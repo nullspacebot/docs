@@ -11,19 +11,19 @@ Two principles drive the design:
 
 ## Architecture
 
-The game engine is a pure function: `resolve(state, orders, tick) → (newState, reports)`. Everything that talks to dev-null.sh lives in a separate adapter, so the local harness can replace it completely.
+The game engine is a pure function: `resolve(state, orders, tick) → (newState, reports)`, written as plain PHP with no framework dependencies. Everything that talks to dev-null.sh lives in a separate adapter, so the local harness can replace it completely.
 
 ```mermaid
 flowchart LR
     DN["dev-null.sh<br/>player commits, notifications, signed API"]
     subgraph Adapter["Platform adapter"]
         R["Reader<br/>finds joins and orders posts"]
-        P["Poster<br/>rate-limited outbox, ~1 post / 7 s"]
+        P["Poster<br/>queued jobs, ~1 post / 7 s"]
     end
-    S["Tick scheduler<br/>every 6 hours, times TBC"]
+    S["Laravel scheduler<br/>ticks every 6 h, polls every minute"]
     E["Game engine<br/>pure and seeded"]
-    H["Local harness<br/>stands in for the adapter"]
-    DB[("SQLite store<br/>state, posts, outbox")]
+    H["Local harness<br/>artisan commands"]
+    DB[("Managed database<br/>state, posts, outbox")]
     RN["Renderer<br/>templates and map PNGs"]
 
     DN -- posts --> R
@@ -47,7 +47,7 @@ The reader and the local harness both feed orders in. Reports go to the renderer
 5. Settle accepts in the same order, then expire old offers.
 6. In one transaction, save the new state, render every report and add it to the outbox.
 
-**Storage (SQLite)**
+**Storage (Laravel Cloud managed database)**
 
 | Table | Holds |
 | --- | --- |
@@ -66,7 +66,28 @@ The reader and the local harness both feed orders in. Reports go to the renderer
 - Every processed commit ID is stored, so a post is never read twice.
 - The RNG for each tick is seeded from the season seed and the tick number, so any tick can be replayed from a backup.
 
-**Stack:** TypeScript on Node, SQLite and a canvas library to draw the map PNGs. This is a default, easy to change before milestone 1.
+## Stack and hosting
+
+NULL SPACE is a Laravel app hosted on Laravel Cloud. dev-null.sh is itself a PHP project, so the bot can sign requests the same way the platform verifies them.
+
+| Part | Laravel implementation |
+| --- | --- |
+| Game engine | Plain PHP classes in `app/Game` with no framework, database or HTTP dependencies, so the engine stays pure and fast to test |
+| Tick and polling | The Laravel scheduler: a `ResolveTick` job at each tick time, and a job every minute that checks dev-null.sh for new joins and orders posts |
+| Poster | A queued job per outbox row, throttled with Laravel's rate limiting to stay under 10 posts a minute. The outbox row, not the queue, is the source of truth for what has been sent |
+| Signing | phpseclib, matching how dev-null.sh verifies SSH signatures. The private key is an environment secret |
+| Map images | Drawn with GD or Imagick |
+| Database | Laravel Cloud's managed MySQL or Postgres, with migrations for the tables above |
+| Local harness | Artisan commands: one to play a turn by hand, one to run scripted players for many ticks |
+| Tests | Pest. The engine gets unit tests and replay tests that check a recorded tick resolves identically |
+
+**Laravel Cloud setup**
+
+- Hibernation **off**. A hibernating environment runs no scheduled tasks, queue workers or background processes, so the bot would miss ticks.
+- A managed queue for the poster jobs. It scales to zero between ticks.
+- A managed database for game state. The app's own disk is not used for anything that must survive a deploy.
+- Secrets in environment variables: the bot's SSH private key and the season seed.
+- Cost: Laravel Cloud's Starter plan is $5 a month plus usage. Check the [pricing calculator](https://cloud.laravel.com/docs/pricing) with an always-on environment, since hibernation is off.
 
 ## Map generation
 
@@ -81,7 +102,7 @@ The map is generated on demand: a hex's contents are a pure function of the seas
 
 - All bot text comes from templates with a few seeded variants each. No language model writes posts, since dev-null.sh's rules ban AI-generated posts.
 - Posts must fit 4,000 characters, up to three images of 10 MB each, and image descriptions of up to 1,000 characters. The renderer truncates scan lists rather than splitting a report into two posts.
-- The map image is drawn server-side as a PNG, centred on the ship and about 9 hexes across. Its alt text is generated from the same data that draws the map.
+- The map image is drawn server-side as a PNG with GD or Imagick, centred on the ship and about 9 hexes across. Its alt text is generated from the same data that draws the map.
 - Every post gives the next tick as a countdown and a UTC time, computed when the post is rendered.
 
 ## Bot account
@@ -115,13 +136,15 @@ Open questions:
 - [ ] Check whether commit JSON includes a parent or root ID, so the bot can tell a reply belongs to a player's log thread.
 - [ ] Check whether commit JSON includes a created time distinct from approval time, to decide which counts against the tick cutoff.
 - [ ] Confirm how the bot uploads an image and its description through the signed API.
+- [ ] Confirm which of GD and Imagick Laravel Cloud's PHP image includes.
+- [ ] Choose MySQL or Postgres. Either works; nothing in the design depends on the choice.
 
 ## Build plan
 
 Build the game offline first, and connect it to dev-null.sh only once it's fun in the local harness.
 
 1. **Engine and map generation.** Seeded hexes, ships, every order, prices, fields, events and trades. Done when unit tests cover every order and its failure cases, and replaying a tick gives identical results.
-2. **Local harness.** Play several simulated players from the terminal, with text reports and the map saved as PNG. Done when a three-player game can be played for 20 ticks by hand.
+2. **Local harness.** Artisan commands to play several simulated players from the terminal, with text reports and the map saved as PNG. Done when a three-player game can be played for 20 ticks by hand.
 3. **Balance pass.** Script bot players (a trader, an explorer, a harvester) and run 200 ticks. Done when no single strategy clearly dominates and a typical player can afford their first upgrade within about 8 ticks.
 4. **Platform reader.** Detect joins and orders posts on dev-null.sh, store them, and feed them to the engine without posting. Done when a dry run against real posts produces correct reports locally.
 5. **Platform poster.** Rate-limited outbox, welcome replies, turn reports with images, daily bulletin. Done when a closed test with 5–10 friends runs a week without double posts or missed reports.
