@@ -2,7 +2,7 @@
 
 Nov 19, 2026 · @Gary
 
-This document covers how the MVP of NULL SPACE is built and run. The game itself (rules, orders, economy, what players see) is in the [game design document](gdd.md).
+This document covers how the MVP of NULL SPACE is built and run: a Laravel app hosted on Laravel Cloud (see [Stack and hosting](#stack-and-hosting)). The game itself (rules, orders, economy, what players see) is in the [game design document](gdd.md).
 
 Two principles drive the design:
 
