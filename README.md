@@ -1,6 +1,9 @@
 # docs
 
-Design docs for NULL SPACE, a trading game played on dev-null.sh.
+The NULL SPACE design docs have moved to the game repository:
 
-- [Game design (MVP)](null-space/gdd.md)
-- [Technical design (MVP)](null-space/technical.md)
+- [Game design (MVP)](https://github.com/nullspacebot/game/blob/main/docs/gdd.md)
+- [Technical design (MVP)](https://github.com/nullspacebot/game/blob/main/docs/technical.md)
+- [AGENTS.md](https://github.com/nullspacebot/game/blob/main/AGENTS.md)
+
+This repository is archived. Earlier versions are in its history.
