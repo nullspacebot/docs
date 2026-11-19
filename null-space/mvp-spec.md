@@ -4,7 +4,7 @@ Nov 19, 2026 · @Gary
 
 ## Overview
 
-NULL SPACE is a turn-based trading game played entirely by posting commits to a bot account, @nullspace, on dev-null.sh. The MVP proves one loop: move around a hex map, harvest and trade three goods for profit, and meet other players near the start.
+NULL SPACE is a turn-based trading game played entirely by posting commits to a bot account on dev-null.sh. This spec calls it @nullspace, but the handle isn't settled yet (see Bot account). The MVP proves one loop: move around a hex map, harvest and trade three goods for profit, and meet other players near the start.
 
 The setting: everything ever piped to /dev/null ends up in an endless void of drifting junk. Each player captains a small salvage ship.
 
@@ -26,7 +26,7 @@ The MVP is trading only, with no combat and no building. Everything not listed a
 | Actions | `move`, `scan`, `harvest`, `buy`, `sell`, `offer`, `accept`, `name`, `status`, `help` | Building, combat, crafting |
 | Economy | 3 goods, stations with supply-driven prices | Production chains, contracts board |
 | Ship | Fuel per tick, 3 upgrades bought at the Hub | Multiple ships, crew |
-| Other players | Seeing ships in scans, trades in the same hex | Chat, guilds, piracy |
+| Other players | Seeing ships in scans, trades offered in the same hex | Chat, guilds, piracy |
 | Risk | One table of deep-void events | Fightable pirates |
 | Output | Join reply, turn reports with a map image, daily bulletin | Web map viewer |
 | Seasons | One open-ended season, reset by hand | Scheduled seasons |
@@ -38,12 +38,13 @@ A player joins with one top-level commit, then plays by replying in that commit'
 1. **Join.** The player posts a top-level commit containing `@nullspace join`. Any other text is allowed.
 2. **Welcome.** The bot replies to that commit within a few minutes, outside the tick. The reply gives the ship's name, starting position, hold, fuel, credits, Hub prices, a map image and the command list.
 3. **Orders.** Before the next tick, the player replies anywhere in their own log thread with a post containing a fenced code block of orders. Text outside the block is ignored by the game.
-4. **Tick.** At 00:00, 06:00, 12:00 and 18:00 UTC the engine resolves every player's orders together.
+4. **Tick.** Four times a day, 6 hours apart, the engine resolves every player's orders together. The exact times are to be confirmed to suit players' timezones. The working default is 00:00, 06:00, 12:00 and 18:00 UTC.
 5. **Report.** The bot replies to the player's latest orders post with a turn report and a map image.
 6. **Repeat** from step 3.
 
 Rules:
 
+- Every bot post gives the next tick as a countdown ("in 3h 57m") as well as a UTC time, so players don't have to convert timezones.
 - Ticks run every 6 hours. A player who sends no orders for a tick gets no reply, and their ship stays where it is.
 - Commits can't be edited on dev-null.sh, so a player corrects orders by posting again. The latest orders post before the tick wins. The report says how many earlier posts were ignored.
 - An orders post that is still pending moderation at tick time isn't visible to the bot, so it counts for the next tick.
@@ -149,13 +150,13 @@ Every ship starts with a 40-unit hold, 12 fuel and a scanner radius of 2. Fuel r
 
 ## Player trades
 
-Two players in the same hex can swap goods or credits. An offer stays open for two ticks, so the other player doesn't have to be online in the same 6-hour window.
+Two players who meet in the same hex can swap goods or credits. An offer stays open for two ticks, so the other player doesn't have to be online in the same 6-hour window.
 
-- **Offer:** `offer @alice 18 entropy for 400 cr`. Both ships must be in the same hex when the offer resolves. Each side can be a good or `cr`.
+- **Offer:** `offer @alice 18 entropy for 400 cr`. Both ships must be in the same hex when the offer is made. Each side can be a good or `cr`.
 - **Notification:** the @mention in the offering post notifies Alice through the platform. Her next turn report also lists the open offer.
 - **Accept:** `accept @you`, from Alice's own log thread. It works in the same tick as the offer, or either of the next two.
-- **Settlement:** at resolution both ships must still share a hex, and each must hold what they're giving and have room for what they get. The swap is all or nothing.
-- **Limits:** one open offer from each player to each other player. A new offer replaces the old one. An offer expires after two ticks or when the offering ship leaves the hex.
+- **Settlement:** the ships don't need to share a hex any more, because either may have moved on since the offer. The lore glosses over how the goods cross the gap. Each ship must hold what they're giving and have room for what they get. The swap is all or nothing.
+- **Limits:** one open offer from each player to each other player. A new offer replaces the old one. An offer expires after two ticks.
 - Both reports say whether the trade settled, failed (and why) or expired.
 
 ## Deep-void events
@@ -180,7 +181,7 @@ The bot writes three kinds of post, all from templates. No language model writes
 | --- | --- | --- | --- |
 | Welcome | Within minutes of a `join` | Reply to the join commit | Ship name, position, hold, fuel, credits, Hub prices, map image, command list, time of next tick |
 | Turn report | After each tick, only for players who sent orders | Reply to the player's latest orders post | One line per order (✓ done or ✗ skipped, with the reason), scan results, events, trade results, open offers to the player, status line, map image, time of next tick |
-| Daily bulletin | After the 00:00 tick | Top-level commit | Player count, hexes charted, biggest price moves, nearly empty fields, top 5 by net worth, trades settled |
+| Daily bulletin | After the first tick of each UTC day | Top-level commit | Player count, hexes charted, biggest price moves, nearly empty fields, top 5 by net worth, trades settled |
 
 **Turn report format** follows the mock-up canvas: a monospaced block with a `TICK n` header, `✓` and `✗` lines, then `SCAN`, `NEARBY` and `EVENTS` sections, then one status line: `HOLD 18/40 entropy · FUEL 11/12 · 780 cr`.
 
@@ -204,7 +205,7 @@ flowchart LR
         R["Reader<br/>finds joins and orders posts"]
         P["Poster<br/>rate-limited outbox, ~1 post / 7 s"]
     end
-    S["Tick scheduler<br/>00, 06, 12, 18 UTC"]
+    S["Tick scheduler<br/>every 6 hours, times TBC"]
     E["Game engine<br/>pure and seeded"]
     H["Local harness<br/>stands in for the adapter"]
     DB[("SQLite store<br/>state, posts, outbox")]
@@ -252,6 +253,16 @@ The reader and the local harness both feed orders in. Reports go to the renderer
 
 **Stack:** TypeScript on Node, SQLite and a canvas library to draw the map PNGs. This is a default, easy to change before milestone 1.
 
+## Bot account
+
+The bot is an ordinary dev-null.sh account, so it needs its own GitHub user account: dev-null.sh only offers GitHub sign-in, and a profile's handle appears to come from the GitHub username.
+
+1. Create a GitHub user account for the bot. GitHub allows each person one free machine account.
+2. Sign in to dev-null.sh with it once, to create the profile.
+3. Generate an SSH key on the server that runs the bot and approve it at `/mobile/authorize`, so the bot can make signed API requests.
+
+The handle is still open. A GitHub organisation can't sign in to dev-null.sh, and organisations and users share one namespace on GitHub. So while the `nullspacebot` organisation exists, no user account can be called `nullspacebot`. Either rename the organisation and give its name to the bot's user account, or keep the organisation and pick another name for the bot, such as `nullspace`, if it's free.
+
 ## Platform constraints and open questions
 
 The bot's 10 posts a minute is the hard limit, and it shapes the tick design. These figures come from dev-null.sh's [knowledge base](https://github.com/dev-null-sh/dev-null.sh/blob/production/KNOWLEDGE_BASE.md#public-read-api-and-atom-feeds).
@@ -267,6 +278,8 @@ The bot's 10 posts a minute is the hard limit, and it shapes the tick design. Th
 
 Open questions:
 
+- [ ] Choose the bot's handle and create its GitHub user account (see Bot account).
+- [ ] Fix the tick times once we know where most players are.
 - [ ] Get the maintainers' OK, and ask whether @nullspace can be auto-approved by moderation.
 - [ ] Find the signed API route for reading notifications. The docs say it exists but don't list it.
 - [ ] Check whether commit JSON includes a parent or root ID, so the bot can tell a reply belongs to a player's log thread.
